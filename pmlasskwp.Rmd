@@ -1,0 +1,106 @@
+---
+title: "Practical Machine Learning Assignment"
+author: "Kai Wakerman Powell"
+date: "November 3, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+This is my Practial Machine Learning Assignment. Thank you very much for taking the time to review the work. Unfortuantely I only have a weak laptop and was not able to try an ensamble model. However it turns out a random forest model is perfectly sufficient for most use.
+
+## Set up
+
+This is the set up. Fortunately this is fair routine and only requires a couple of packages.
+
+```{r}
+library(caret)
+library(randomForest)
+set.seed(1234)
+```
+
+### Reading in the data
+
+I have a look through the data before loading it in. Some data cleaning will be needed. Also care will be required in reading in the data as there are several values we want to exclude.
+
+```{r}
+input<-read.csv("~/pml-training.csv",na.strings=c("NA","","#DIV/0!"))
+validation<-read.csv("~/pml-testing.csv",na.strings=c("NA","","#DIV/0!"))
+```
+
+## Cleaning 
+
+We need to have a good look at the data, and clean it. We must be careful that both the training, testing and validation sets all get the same treatment.
+
+First we'll have a look around:
+
+```{r eval=FALSE}
+summary(input)
+str(input)
+```
+
+Evidently we have too many useless columns. This will affect some models and slows down the process. So we clean out all the columns that are mostly empty or the first few 'meta-data' columns that we probably shouldn't be using (and are also not in the validation set). 
+
+```{r}
+input<-input[,8:length(input)]
+validation<-validation[,8:length(validation)]
+excl<-which(colSums(is.na(input))>10)
+input<-input[,-excl]
+validation<-validation[,-excl]
+```
+
+We also want to seperate out a training and a testing set to have some idea about the out-of-sample error.
+
+```{r}
+trainset<-createDataPartition(input$classe,p=0.9,list=F)
+training<-input[trainset,]
+testing<-input[-trainset,]
+```
+
+## Modelling
+
+There are a few possible models we could use. Preferably, given the proven effectiveness in the wild, we would use an ensamble model. Because my computer isn't great, I'm going to limit it to a random forest model, which is generally good at finding catagorical results. It is also fairly easy to run cross validation and to test for the out-of-sample error. It will also allow us to make good use of existing features, without having to know the data well to try to perfect features for the model.
+
+### Building the model
+
+Firstly the model controls are implemented and hte model is run. Reasonable sized samples are taken for cross validation to balance computational needs, variance and bias.
+
+```{r}
+ctrler<-trainControl(method="cv",allowParallel=TRUE, number = 10,repeats=10)
+modrf<-train(classe~.,method="rf",data=training,trControl=ctrler)
+```
+
+## Testing the model
+
+### In-sample results
+
+We first want to see how it performed within sample. The results are impressive with very high accuracy, sensitvity and specificity. ~99% is about as good as you'll get.
+
+```{r}
+predictionTrain <- predict(modrf, training)
+confusionMatrix(predictionTrain, training$classe)$table
+confusionMatrix(predictionTrain, training$classe)$overall
+```
+
+### Out-of-sample
+
+We also want to have some idea if the model is over-specified. That is, we want to know how it performs out-of-sample. Fortunately, we pared of a sample testing set to use for this purpose. This model seems to perform just as well as in-sample, which is good.
+
+```{r}
+predictionTest <- predict(modrf, testing)
+confusionMatrix(predictionTest, testing$classe)$table
+confusionMatrix(predictionTest, testing$classe)$overall
+```
+
+### Final results
+
+Finally, we want to run our model over twenty observations to get our final results for the assignment. This is done by simply running the model over the input.
+
+```{r}
+predictionResults <- predict(modrf, validation)
+predictionResults
+```
